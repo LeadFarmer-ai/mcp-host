@@ -12,8 +12,8 @@ dotenv.config({
 })
 
 const cli = new MCPClientCLI({
-  command: path.resolve(__dirname, '../index.js'),
-  args: ['start'],
+  command: process.execPath,
+  args: [path.resolve(__dirname, 'mcp-server-example.js')],
 })
 
 cli.start()
