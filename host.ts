@@ -92,7 +92,7 @@ export class MCPClient {
       this.logger.log('Failed to initialize MCP Client: ' + error + '\n', {
         type: 'error',
       })
-      process.exit(1)
+      throw error
     }
   }
 
