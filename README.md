@@ -192,33 +192,16 @@ This server provides basic example tools like calculator and weather lookup.
    npm install @modelcontextprotocol/sdk
    ```
 
-3. Create a basic server (`index.ts`):
+3. Create your server:
 
-   ```typescript
-   import { Server } from '@modelcontextprotocol/sdk/server'
+   - For a simple example to get started, check out `mcp-server-example.ts` in this repository
+   - Try creating your own tools! Some ideas:
+     - A calculator with different operations
+     - A todo list manager
+     - A weather lookup service
+     - A file system navigator
 
-   const server = new Server({
-     name: 'my-tools',
-     version: '1.0.0',
-     tools: [
-       {
-         name: 'hello',
-         description: 'Says hello',
-         input_schema: {
-           type: 'object',
-           properties: {
-             name: { type: 'string' },
-           },
-         },
-         handler: async ({ name }) => {
-           return `Hello, ${name}!`
-         },
-       },
-     ],
-   })
-
-   server.start()
-   ```
+   The MCP SDK makes it easy to define tools with input validation using Zod schemas and clear descriptions that LLMs can understand.
 
 4. Build and run your server:
    ```bash
