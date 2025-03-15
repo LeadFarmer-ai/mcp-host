@@ -28,11 +28,22 @@ export class MCPClientCLI {
         type: 'info',
       })
       this.logger.log(consoleStyles.separator + '\n', { type: 'info' })
-      await this.client.start()
-
+      try {
+        await this.client.start()
+      } catch (clientError) {
+        const error = new Error('Client failed to start', {
+          cause: clientError,
+        })
+        console.log('===============================================')
+        console.error('Client Error Details:', error)
+        console.error('Original Error:', clientError)
+        console.error('Stack Trace:', error.stack)
+        console.log('===============================================')
+        process.exit(1) // Exit immediately on client start failure
+      }
       await this.chat_loop()
     } catch (error) {
-      this.logger.log('Failed to initialize tools: ' + error + '\n', {
+      await this.logger.log('Failed to initialize tools: ' + error + '\n', {
         type: 'error',
       })
       process.exit(1)
