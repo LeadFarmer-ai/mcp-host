@@ -1,20 +1,23 @@
 {
-  "name": "mcp-llm-cli",
+  "name": "mcp-server-example",
   "version": "1.0.0",
   "type": "module",
   "description": "A CLI for Anthropic using MCP as the protocol for tool calling",
   "scripts": {
     "start": "npm run build && node ./dist/cli.js",
-    "build": "tsc && node -e \"require('fs').chmodSync('dist/cli.js', '755')\"",
-    "watch": "tsc-watch --onSuccess \"chmod 755 dist/*.js\""
+    "build": "tsc && chmod 755 dist/cli.js dist/mcp-server-example.js",
+    "watch": "tsc-watch --onSuccess \"chmod 755 dist/*.js\"",
+    "server": "node dist/mcp-server-example.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@modelcontextprotocol/sdk": "^1.6.1",
     "chalk": "^5.4.1",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/node": "^20.11.24",
     "typescript": "^5.8.2"
   }
 }
