@@ -1,7 +1,7 @@
 import { StdioServerParameters } from '@modelcontextprotocol/sdk/client/stdio.js'
 import readline from 'readline/promises'
-import { MCPClient } from './host'
-import { consoleStyles, Logger } from './logger'
+import { MCPClient } from './host.js'
+import { consoleStyles, Logger } from './logger.js'
 
 const EXIT_COMMAND = 'exit'
 
