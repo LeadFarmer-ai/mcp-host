@@ -1,0 +1,17 @@
+{
+  "name": "mcp-llm-cli",
+  "version": "1.0.0",
+  "description": "A CLI for Anthropic using MCP as the protocol for tool calling",
+  "scripts": {
+    "start": "npm run build && node ./dist/cli.js",
+    "build": "tsc && node -e \"require('fs').chmodSync('dist/index.js', '755')\"",
+    "prepare": "npm run build",
+    "watch": "tsc-watch --onSuccess \"chmod 755 dist/*.js\""
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@modelcontextprotocol/sdk": "^1.6.1",
+    "chalk": "^5.4.1",
+    "dotenv": "^16.4.7"
+  }
+}
