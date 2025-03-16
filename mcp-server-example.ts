@@ -58,6 +58,19 @@ server.tool(
   },
 )
 
+server.tool(
+  'divide',
+  {
+    a: z.number().describe('number').min(-1000).max(1000),
+    b: z.number().describe('amount to divide by').min(-1000).max(1000),
+  },
+  async ({ a, b }) => {
+    return {
+      content: [{ type: 'text', text: String(a / b) }],
+    }
+  },
+)
+
 // Add a dynamic greeting resource
 server.resource(
   'greeting',
