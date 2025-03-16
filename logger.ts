@@ -19,6 +19,7 @@ export const consoleStyles = {
   success: chalk.green,
   warning: chalk.yellow,
   separator: chalk.gray('─'.repeat(50)),
+  toolsAvailable: chalk.cyan.dim,
   default: chalk,
 }
 
