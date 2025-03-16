@@ -5,9 +5,29 @@ import {
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 
+async function stop() {
+  cleanup()
+  process.exit(0)
+}
+
+async function cleanup() {
+  try {
+    if (server) {
+      await server.close()
+    }
+    process.exit(0)
+  } catch (error) {
+    process.exit(1)
+  }
+}
+
+process.on('uncaughtException', (error) => {
+  cleanup()
+})
+
 // Create an MCP server
 const server = new McpServer({
-  name: 'Demo',
+  name: 'Add',
   version: '1.0.0',
 })
 
@@ -18,9 +38,24 @@ server.tool(
     a: z.number().describe('First number to add').min(-1000).max(1000),
     b: z.number().describe('Second number to add').min(-1000).max(1000),
   },
-  async ({ a, b }) => ({
-    content: [{ type: 'text', text: String(a + b) }],
-  }),
+  async ({ a, b }) => {
+    return {
+      content: [{ type: 'text', text: String(a + b) }],
+    }
+  },
+)
+
+server.tool(
+  'multiply',
+  {
+    a: z.number().describe('number').min(-1000).max(1000),
+    b: z.number().describe('amount to multiply by').min(-1000).max(1000),
+  },
+  async ({ a, b }) => {
+    return {
+      content: [{ type: 'text', text: String(a * b) }],
+    }
+  },
 )
 
 // Add a dynamic greeting resource
