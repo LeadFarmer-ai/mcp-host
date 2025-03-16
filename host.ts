@@ -9,6 +9,7 @@ import chalk from 'chalk' // use this for the cli
 import { Tool } from '@anthropic-ai/sdk/resources/index.mjs' // the type for the tools that the mcp servers share with this host
 import { Stream } from '@anthropic-ai/sdk/streaming.mjs' // the type for the stream of messages from anthropic
 import { consoleStyles, Logger, LoggerOptions } from './logger.js' // the logger for the cli
+import util from 'util'
 
 // Basic types for chat messages
 interface Message {
@@ -110,6 +111,14 @@ export class MCPClient {
       ...tool,
       input_schema: inputSchema,
     }))
+
+    this.logger.log(
+      consoleStyles.toolsAvailable(
+        `======> MCP Tools available: ${this.tools
+          .map((t) => t.name)
+          .join(', ')}\n`,
+      ),
+    )
   }
 
   // CLI-specific formatting functions
@@ -159,53 +168,29 @@ export class MCPClient {
    */
   private async processStream(
     stream: Stream<Anthropic.Messages.RawMessageStreamEvent>,
-    depth: number = 0,
-    halt: boolean = false,
   ): Promise<void> {
-    const MAX_TOOL_DEPTH = 10 // Maximum number of recursive tool calls allowed
-
-    // If we've reached max depth or halt is requested, mark that we should stop tool calls
-    // But continue processing the current stream
-    if (depth >= MAX_TOOL_DEPTH || halt) {
-      this.logger.log('Halting further tool calls', { type: 'warning' })
-      halt = true // Ensure halt is set for the rest of this stream
-    }
-
     let currentMessage = ''
     let currentToolName = ''
     let currentToolInputString = ''
 
     this.logger.log(consoleStyles.assistant)
-
     for await (const chunk of stream) {
-      // Continue processing the stream normally
-      // The halt flag will prevent new tool calls from being executed
       switch (chunk.type) {
         case 'message_start':
         case 'content_block_stop':
-          // These events mark the start/end of message blocks
-          // We don't need to process them directly
           continue
 
         case 'content_block_start':
-          // Signals the start of a new content block
-          // For tool calls, this tells us which tool Claude wants to use
           if (chunk.content_block?.type === 'tool_use') {
             currentToolName = chunk.content_block.name
           }
           break
 
         case 'content_block_delta':
-          // Contains the actual content being streamed
-          // Can be either regular text or tool input JSON
           if (chunk.delta.type === 'text_delta') {
-            // Regular text response from Claude
-            // We both display it and accumulate it
             this.logger.log(chunk.delta.text)
             currentMessage += chunk.delta.text
           } else if (chunk.delta.type === 'input_json_delta') {
-            // Tool input parameters from Claude
-            // We accumulate JSON fragments until we have the complete input
             if (currentToolName && chunk.delta.partial_json) {
               currentToolInputString += chunk.delta.partial_json
             }
@@ -220,17 +205,15 @@ export class MCPClient {
             })
           }
 
-          // Only attempt tool calls if we haven't halted
-          if (chunk.delta.stop_reason === 'tool_use' && !halt) {
-            // Parse accumulated tool input JSON
+          if (chunk.delta.stop_reason === 'tool_use') {
             const toolArgs = currentToolInputString
               ? JSON.parse(currentToolInputString)
               : {}
 
-            // Execute the tool call and get results
             this.logger.log(
               this.formatToolCall(currentToolName, toolArgs) + '\n',
             )
+            // console.log('======> Tool call: ' + currentToolName)
             const toolResult = await this.mcpClient.request(
               {
                 method: 'tools/call',
@@ -242,18 +225,18 @@ export class MCPClient {
               CallToolResultSchema,
             )
 
-            // Format and save tool results to conversation history
-            const formattedResult = this.formatJSON(
-              JSON.stringify(toolResult.content.flatMap((c) => c.text)),
-            )
+            // assuming text is the only content type
+            const toolResultContent = toolResult.content
+              .map((c) => c.text)
+              .join('')
+
+            const toolResultMessage = `Tool result returned for [${currentToolName}]: ${toolResultContent}`
+
             this.messages.push({
-              role: 'user',
-              content: formattedResult,
+              role: 'assistant',
+              content: toolResultMessage,
             })
 
-            // Start another round with tool results
-            // This creates a new stream with the updated history
-            // allowing Claude to see the tool results and continue the conversation
             const nextStream = await this.anthropicClient.messages.create({
               messages: this.messages,
               model: 'claude-3-5-sonnet-20241022',
@@ -261,30 +244,14 @@ export class MCPClient {
               tools: this.tools,
               stream: true,
             })
-            // Process the new stream, incrementing depth to track tool call nesting
-            await this.processStream(nextStream, depth + 1, halt)
-          } else if (chunk.delta.stop_reason === 'tool_use' && halt) {
-            // If we hit a tool call while halted, inform Claude to continue without tools
-            this.messages.push({
-              role: 'user',
-              content: 'Please continue your response without using tools.',
-            })
-            const nextStream = await this.anthropicClient.messages.create({
-              messages: this.messages,
-              model: 'claude-3-5-sonnet-20241022',
-              max_tokens: 8192,
-              stream: true, // Note: not passing tools here
-            })
-            await this.processStream(nextStream, depth, true)
+            await this.processStream(nextStream)
           }
           break
 
         case 'message_stop':
-          // Normal completion of a message without tool calls
           break
 
         default:
-          // Log unexpected event types for debugging
           this.logger.log(`Unknown event type: ${JSON.stringify(chunk)}\n`, {
             type: 'warning',
           })
@@ -292,14 +259,31 @@ export class MCPClient {
     }
   }
 
-  /**
-   * Main entry point for processing user queries
-   * Creates a new Claude API stream and processes the response
-   * Each new query resets the tool call depth counter and halt state
-   */
   async processQuery(query: string) {
     try {
-      this.messages.push({ role: 'user', content: query })
+      this.messages.push({
+        role: 'user',
+        content: `
+        Instructions on Answering the User Query:
+        You will be given a list of tools and their arguments.
+        You will need to use the tool(s) that are most likely to answer the user query.
+        You can see over the history of the conversation if the tool has been called & the result returned.
+        If it logically makes sense to call a tool again or call a different tool, then do so.
+        If you see this as the last message: "Tool result returned for [toolName]: toolResultContent"
+        This means that the tool has been called and the result has been returned.
+        toolResultContent is the result of the tool call and what you should use to answer the User Query.
+        There may be multiple tool calls in the conversation history and you should use all of their results to answer the User Query.
+        Stop & consider the User Query and whether you need to call any more tools to answer it.
+        If you have all the info you need in the history of the conversation and/or all the info you can get given the tools you have,
+        then you can stop & return the answer to the User Query. Do not call any more tools.
+        The answer should be based on the User Query and the tool results returned in the conversation history.
+        The first thing you should do is consider the tools you have and make a plan on how to answer the User Query.
+        Then in later steps you will have access to the plan you made so it will be easier to call the correct tools.
+        If the User Query cannot be answered using the tools available, then you should return a message to the User Query that you cannot answer it.
+        
+        User Query: ${query}
+        `,
+      })
 
       const stream = await this.anthropicClient.messages.create({
         messages: this.messages,
@@ -308,8 +292,7 @@ export class MCPClient {
         tools: this.tools,
         stream: true,
       })
-      // Start fresh with depth 0 and no halt for each new query
-      await this.processStream(stream, 0, false)
+      await this.processStream(stream)
 
       return this.messages
     } catch (error) {
