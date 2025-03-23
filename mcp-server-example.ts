@@ -25,13 +25,12 @@ process.on('uncaughtException', (error) => {
   cleanup()
 })
 
-// Create an MCP server
+// Create MCP server
 const server = new McpServer({
-  name: 'Add',
+  name: 'Arithmetic',
   version: '1.0.0',
 })
 
-// Add an addition tool
 server.tool(
   'add',
   {
@@ -71,7 +70,6 @@ server.tool(
   },
 )
 
-// Add a dynamic greeting resource
 server.resource(
   'greeting',
   new ResourceTemplate('greeting://{name}', { list: undefined }),
