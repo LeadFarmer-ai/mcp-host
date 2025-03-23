@@ -279,7 +279,7 @@ export class MCPClient {
         The answer should be based on the User Query and the tool results returned in the conversation history.
         The first thing you should do is consider the tools you have and make a plan on how to answer the User Query.
         Then in later steps you will have access to the plan you made so it will be easier to call the correct tools.
-        If the User Query cannot be answered using the tools available, then you should return a message to the User Query that you cannot answer it.
+        If the User Query cannot be answered using the tools available, then you should return a message to the User Query & say that you cannot answer it.
         
         User Query: ${query}
         `,
