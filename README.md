@@ -2,6 +2,10 @@
 
 A demo cli client that you can connect MCP servers to and then query via your terminal.
 
+## Credits
+
+_Heavily_ inspired by the (article)[https://neon.tech/blog/building-a-cli-client-for-model-context-protocol-servers] & example code published by Neon.
+
 ## The Point
 
 For me the point of this prototype is:
