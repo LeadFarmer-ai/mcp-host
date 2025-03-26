@@ -1,4 +1,4 @@
-import { StdioServerParameters } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { MCPServerConfig } from './host.js'
 import readline from 'readline/promises'
 import { MCPClient } from './host.js'
 import { consoleStyles, Logger } from './logger.js'
@@ -10,8 +10,11 @@ export class MCPClientCLI {
   private client: MCPClient
   private logger: Logger
 
-  constructor(serverConfig: StdioServerParameters) {
-    this.client = new MCPClient(serverConfig)
+  constructor(serverConfigs: MCPServerConfig[]) {
+    this.client = new MCPClient({
+      servers: serverConfigs,
+      loggerOptions: { mode: 'verbose' },
+    })
     this.logger = new Logger({ mode: 'verbose' })
 
     this.rl = readline.createInterface({

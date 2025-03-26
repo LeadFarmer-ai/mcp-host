@@ -12,6 +12,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@modelcontextprotocol/sdk": "^1.6.1",
+    "@modelcontextprotocol/server-slack": "^2025.1.17",
     "chalk": "^5.4.1",
     "dotenv": "^16.4.7",
     "zod": "^3.24.2"
