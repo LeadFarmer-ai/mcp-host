@@ -129,67 +129,65 @@ I was stoked to see the way that tools are described by MCP servers is by `Zod` 
 
 Example MCP server with a Search tool:
 
-```
-import { z } from "zod";
-import { createServer } from "@modelcontextprotocol/sdk";
-import { glob } from "glob";  // You'd need to npm install glob
+```typescript
+import { z } from 'zod'
+import { createServer } from '@modelcontextprotocol/sdk'
+import { glob } from 'glob' // You'd need to npm install glob
 
-const server = createServer();
+const server = createServer()
 
 // Define the input schema for the search_files tool
 const SearchFilesInput = z.object({
-  query: z.string().describe("The search term")
-});
+  query: z.string().describe('The search term'),
+})
 
 // Register the tool with the server
 server.tool({
-  name: "search_files",
-  description: "Search for files in the workspace",
+  name: 'search_files',
+  description: 'Search for files in the workspace',
   inputSchema: SearchFilesInput,
   handler: async ({ query }) => {
     try {
       // Use glob to search for files matching the query
       const files = await glob(`**/*${query}*`, {
         ignore: ['node_modules/**', '.git/**'],
-        nodir: true
-      });
+        nodir: true,
+      })
 
       return {
         files,
         count: files.length,
-        message: `Found ${files.length} files matching "${query}"`
-      };
+        message: `Found ${files.length} files matching "${query}"`,
+      }
     } catch (error) {
-      throw new Error(`Failed to search files: ${error.message}`);
+      throw new Error(`Failed to search files: ${error.message}`)
     }
-  }
-});
-
+  },
+})
 
 // Start the server
-server.listen();
-
+server.listen()
 ```
 
 The tools description that gets sent back to our MCP Host client might look like this:
 
-```
+```typescript
 {
   tools: [
     {
-      name: "search_files",
-      description: "Search for files in the workspace",
+      name: 'search_files',
+      description: 'Search for files in the workspace',
       inputSchema: {
-        type: "object",
+        type: 'object',
         properties: {
           query: {
-            type: "string",
-            description: "The search term"
-          }
+            type: 'string',
+            description: 'The search term',
+          },
         },
-        required: ["query"]
-      }
-    }
+        required: ['query'],
+      },
+    },
   ]
 }
 ```
@@ -198,7 +196,7 @@ The tools description that gets sent back to our MCP Host client might look like
 
 When you run `npm start`, you'll see an interactive terminal interface:
 
-```
+```bash
 > MCP Host CLI
 > Connected to MCP Server
 > Tools available: [list of tools from server]
@@ -209,7 +207,7 @@ When you run `npm start`, you'll see an interactive terminal interface:
 
 Example interaction:
 
-```
+```bash
 > What tools do you have available?
 
 [Assistant will list available tools from the connected MCP server]
