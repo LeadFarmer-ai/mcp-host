@@ -6,14 +6,24 @@ A demo cli client that you can connect MCP servers to and then query via your te
 
 For me the point of this prototype is:
 
-1. Creating your own MCP client as there are few examples and its sparsely documented
-2. Demo decoupling i.e. seeing that you can connect different MCP servers to your client and the client now knows how to do all manner of different things but there is no mention of any of these new capabilties in the client code at all.
+1. Creating your own MCP client as there are few examples and its sparsely documented (and for me I will need MCP clients for the systems I want to build)
+2. Show how decoupled this in practice i.e. seeing that you can connect different MCP servers to your client and the client now knows how to do all manner of different things but there is no mention of any of these new capabilties in the client code at all.
 
 ## Not the Point
 
 You won't see anything here that cannot be done with existing technology e.g. some other tool calling llm. Whats exciting about this is not the raw capabilities (we can all write a script to hit an api with an llm) it's the simple _way its organized_ in a decoupled understandable fashion.
 
-A growing ecosystem of MCP Servers could be another big plus.
+And a growing ecosystem of [MCP Servers](https://github.com/modelcontextprotocol/servers?tab=readme-ov-file)...
+
+## What is Model Context Protocol?
+
+MCP is a standardized way of connecting an LLM you're working with to data sources and tools. It feels like connecting a device over USB-C. You are essentially plugging in a capability e.g. send emails, manage files on google drive, use a To Do list, make a dinner reservation. The MCP servers can be local e.g. cursor. Or they can be remote.
+
+Another lens to look at it thru is the idea of a protocol. So you or I can write an open source MCP server and I could just use the one you wrote out of the box. So you could think of it like REST. REST didn't invent the idea of an API or communicating with servers, it just standardized a way of doing it that made sense to a lot of people.
+
+## Why should we care?
+
+From what I can see so far, the ease of use and the expanding ecosystem will be a real accelerator. So we should care because soon we'll be able to build agents more simply, more quickly, and more easily that do stuff in the real world. And on top of that there is this a great deal of free MCP lego blocks to play with.
 
 ## Dependencies
 
@@ -33,6 +43,8 @@ A growing ecosystem of MCP Servers could be another big plus.
 Required environment variables (see `.env.example`):
 
 - `ANTHROPIC_API_KEY` - Your Anthropic API key for Claude access
+- `SLACK_BOT_TOKEN` - Your Anthropic API key for Claude access
+- `SLACK_TEAM_ID` - Your Anthropic API key for Claude access
 
 ## Getting Started
 
@@ -45,10 +57,7 @@ Required environment variables (see `.env.example`):
 2. **Configure Environment**
 
    - Copy `.env.example` to `.env`
-   - Add your Anthropic API key to `.env`:
-     ```
-     ANTHROPIC_API_KEY=your_key_here
-     ```
+   - Add your keys to `.env`
 
 3. **Start the CLI Client**
    This will open a terminal window with a session running
@@ -63,11 +72,13 @@ Required environment variables (see `.env.example`):
    - Use the default server path in `cli.ts`
    - Or modify the server config when creating the CLI:
      ```typescript
-     const cli = new MCPClientCLI({
-       command: 'path/to/your/server',
-       args: ['start'],
-       cwd: '/optional/working/directory',
-     })
+     const cli = new MCPClientCLI([
+       {
+         command: 'path/to/your/server',
+         args: ['start'],
+         cwd: '/optional/working/directory',
+       },
+     ])
      ```
 
 5. **Interact with Claude**
@@ -87,18 +98,18 @@ In general:
 4. It decides what tools to use to answer the question & calls them
 5. It passes the tool responses back to the LLM along with the user query
 6. LLM decides whether to call more tools recursively or output a final answer
-7. Ultimately it sends the final response to the CLI
+7. It streams the response to the CLI as it goes
 
 ### Limitations
 
-- Only handling one MCP Server (we could pass a config of servers instead of only allowing one via cli)
 - LLM is Claude but it could be abstracted to be any tool calling LLM
 - Currently only supports text messages (no images/files)
 - Messages are stored in memory (no persistence)
 - If the data returned is very large it would at the least confuse the llm
+- not really handling data responses very elegantly
 - No error recovery for failed tool calls
 - Single conversation context only
-- I am pretty sure the code could be improved
+- The code could be improved
 
 ## How do MCP Servers Work
 
@@ -111,6 +122,77 @@ MCP Servers provide 3 things:
 3. Prompts: this is a prompt template that the MCP Host can make use of to just keep the prompting more orgamized and under control
 
 The MCP Server has a way of explaining to the LLM what those things are and how to call them e.g. schemas, descriptions.
+
+### Tool Descriptions
+
+I was stoked to see the way that tools are described by MCP servers is by `Zod` schema. You include a `.describe("The search term")` to say what the term is e.g. the first argument to a search function.
+
+Example MCP server with a Search tool:
+
+```
+import { z } from "zod";
+import { createServer } from "@modelcontextprotocol/sdk";
+import { glob } from "glob";  // You'd need to npm install glob
+
+const server = createServer();
+
+// Define the input schema for the search_files tool
+const SearchFilesInput = z.object({
+  query: z.string().describe("The search term")
+});
+
+// Register the tool with the server
+server.tool({
+  name: "search_files",
+  description: "Search for files in the workspace",
+  inputSchema: SearchFilesInput,
+  handler: async ({ query }) => {
+    try {
+      // Use glob to search for files matching the query
+      const files = await glob(`**/*${query}*`, {
+        ignore: ['node_modules/**', '.git/**'],
+        nodir: true
+      });
+
+      return {
+        files,
+        count: files.length,
+        message: `Found ${files.length} files matching "${query}"`
+      };
+    } catch (error) {
+      throw new Error(`Failed to search files: ${error.message}`);
+    }
+  }
+});
+
+
+// Start the server
+server.listen();
+
+```
+
+The tools description that gets sent back to our MCP Host client might look like this:
+
+```
+{
+  tools: [
+    {
+      name: "search_files",
+      description: "Search for files in the workspace",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "The search term"
+          }
+        },
+        required: ["query"]
+      }
+    }
+  ]
+}
+```
 
 ## Using the CLI
 
