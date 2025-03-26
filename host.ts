@@ -9,7 +9,7 @@ import chalk from 'chalk' // use this for the cli
 import { Tool } from '@anthropic-ai/sdk/resources/index.mjs' // the type for the tools that the mcp servers share with this host
 import { Stream } from '@anthropic-ai/sdk/streaming.mjs' // the type for the stream of messages from anthropic
 import { consoleStyles, Logger, LoggerOptions } from './logger.js' // the logger for the cli
-import util from 'util'
+import { retryWithExponentialBackoff } from './retry.js'
 
 // Basic types for chat messages
 interface Message {
@@ -290,13 +290,21 @@ export class MCPClient {
             // create a new stream with the updated message history
             // if the llm has stopped then there will be no more tool calls
             // & the stream will end b/c nextStream will not be called
-            const nextStream = await this.anthropicClient.messages.create({
-              messages: this.messages,
-              model: 'claude-3-5-sonnet-20241022',
-              max_tokens: 8192,
-              tools: this.getAllTools(),
-              stream: true,
-            })
+            const nextStream = await retryWithExponentialBackoff(
+              () =>
+                this.anthropicClient.messages.create({
+                  messages: this.messages,
+                  model: 'claude-3-5-sonnet-20241022',
+                  max_tokens: 8192,
+                  tools: this.getAllTools(),
+                  stream: true,
+                }),
+              {
+                maxAttempts: 5,
+                initialDelay: 2000,
+                maxDelay: 15000,
+              },
+            )
             await this.processStream(nextStream)
           }
           break
@@ -337,21 +345,30 @@ export class MCPClient {
         User Query: ${query}
         `,
       })
-
-      const stream = await this.anthropicClient.messages.create({
-        messages: this.messages,
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 8192,
-        tools: this.getAllTools(),
-        stream: true,
-      })
-      await this.processStream(stream)
+      try {
+        const stream = await retryWithExponentialBackoff(
+          () =>
+            this.anthropicClient.messages.create({
+              messages: this.messages,
+              model: 'claude-3-5-sonnet-20241022',
+              max_tokens: 8192,
+              tools: this.getAllTools(),
+              stream: true,
+            }),
+          {
+            maxAttempts: 5,
+            initialDelay: 2000,
+            maxDelay: 15000,
+          },
+        )
+        await this.processStream(stream)
+      } catch (error) {
+        console.error('=========> Anthropic API call failed')
+        throw error
+      }
 
       return this.messages
     } catch (error) {
-      this.logger.log('\nError during query processing: ' + error + '\n', {
-        type: 'error',
-      })
       if (error instanceof Error) {
         this.logger.log(
           consoleStyles.assistant +
