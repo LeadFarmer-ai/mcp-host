@@ -19,11 +19,16 @@ And a growing ecosystem of [MCP Servers](https://github.com/modelcontextprotocol
 
 MCP is a standardized way of connecting an LLM you're working with to data sources and tools. It feels like connecting a device over USB-C. You are essentially plugging in a capability e.g. send emails, manage files on google drive, use a To Do list, make a dinner reservation. The MCP servers can be local e.g. cursor. Or they can be remote.
 
+![image](https://github.com/user-attachments/assets/18944aab-382b-4aef-873d-e59336521fb2)
+
 Another lens to look at it thru is the idea of a protocol. So you or I can write an open source MCP server and I could just use the one you wrote out of the box. So you could think of it like REST. REST didn't invent the idea of an API or communicating with servers, it just standardized a way of doing it that made sense to a lot of people.
 
 ## Why should we care?
 
 From what I can see so far, the ease of use and the expanding ecosystem will be a real accelerator. So we should care because soon we'll be able to build agents more simply, more quickly, and more easily that do stuff in the real world. And on top of that there is this a great deal of free MCP lego blocks to play with.
+
+![it might work for us](https://github.com/user-attachments/assets/202f2433-e896-49e6-9303-27d8cccadc75)
+
 
 ## Dependencies
 
