@@ -24,8 +24,15 @@ interface StdioServerConfig {
   cwd?: string // Optional working directory for the server
 }
 
-// Update the MCPClientOptions type
-type MCPClientOptions = StdioServerConfig & {
+// Update interface to support multiple servers
+export interface MCPServerConfig extends StdioServerConfig {
+  id: string
+  env?: Record<string, string> // Optional environment variables for the server
+}
+
+// Update options to accept array of server configs
+type MCPClientOptions = {
+  servers: MCPServerConfig[]
   loggerOptions?: LoggerOptions
 }
 
@@ -41,54 +48,73 @@ type MCPClientOptions = StdioServerConfig & {
 export class MCPClient {
   private anthropicClient: Anthropic // connection to claude - we use their client for tool calling
   private messages: Message[] = [] // In-memory message history
-  private mcpClient: Client // the client itself
-  private transport: StdioClientTransport // transport for the MCP client this 1:1 with each server
-  private tools: Tool[] = [] // tools that the mcp servers share with the this host
+  // Map to store MCP clients, transports, and tools for each server
+  // we use a map so we can look up which server has the tool we need to call
+  private servers: Map<
+    string,
+    {
+      mcpClient: Client
+      transport: StdioClientTransport
+      tools: Tool[]
+    }
+  > = new Map()
+
+  // Logger for the MCP Client
   private logger: Logger
 
-  constructor({
-    // Logger configuration for controlling output verbosity and format
-    loggerOptions,
-
-    // Command to start the MCP server process
-    // This could be a path to an executable or a shell command
-    command,
-
-    // Optional array of arguments to pass to the server command
-    // Example: ['--port', '8080', '--config', 'config.json']
-    args,
-
-    // Optional working directory where the server process will be started
-    // Useful for resolving relative paths and accessing server resources
-    cwd,
-  }: MCPClientOptions) {
-    // Initialize Anthropic client for Claude API access
+  constructor({ servers, loggerOptions }: MCPClientOptions) {
     this.anthropicClient = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
     })
 
-    // Initialize MCP client that will handle tool communication
-    this.mcpClient = new Client(
-      { name: 'cli-client', version: '1.0.0' },
-      { capabilities: {} },
-    )
-
-    // Initialize the transport with server config
-    // This creates a connection to the MCP server via stdio
-    this.transport = new StdioClientTransport({
-      command,
-      args,
-      cwd,
-    })
-
     this.logger = new Logger(loggerOptions ?? { mode: 'verbose' })
+
+    // Initialize each server's components
+    for (const config of servers) {
+      const mcpClient = new Client(
+        { name: `cli-client-${config.id}`, version: '1.0.0' },
+        { capabilities: {} },
+      )
+
+      // Create a transport for each server
+      const transport = new StdioClientTransport({
+        command: config.command,
+        args: config.args,
+        cwd: config.cwd,
+        env: config.env,
+      })
+
+      // Add the server to the map so we can call tools on it
+      this.servers.set(config.id, {
+        mcpClient,
+        transport,
+        tools: [],
+      })
+    }
   }
 
   // Connect to MCP server and initialize available tools
   async start() {
     try {
-      await this.mcpClient.connect(this.transport)
-      await this.initMCPTools()
+      // Start all servers in parallel
+      await Promise.all(
+        Array.from(this.servers.entries()).map(async ([id, server]) => {
+          // Connect to the server
+          await server.mcpClient.connect(server.transport)
+          // Initialize the tools for the server
+          const tools = await this.initMCPTools(server.mcpClient)
+          // Add the tools to the server
+          server.tools = tools
+          // Log the tools available for the server
+          this.logger.log(
+            consoleStyles.toolsAvailable(
+              `======> MCP Tools available for ${id}: ${tools
+                .map((t) => t.name)
+                .join(', ')}\n`,
+            ),
+          )
+        }),
+      )
     } catch (error) {
       this.logger.log('Failed to initialize MCP Client: ' + error + '\n', {
         type: 'error',
@@ -98,27 +124,40 @@ export class MCPClient {
   }
 
   async stop() {
-    await this.mcpClient.close()
+    await Promise.all(
+      Array.from(this.servers.values()).map((server) =>
+        server.mcpClient.close(),
+      ),
+    )
   }
 
-  // Fetch available tools from the MCP server
-  private async initMCPTools() {
-    const toolsResults = await this.mcpClient.request(
+  // Calls the actual MCP server to get the list of tools & their schema descriptions
+  private async initMCPTools(mcpClient: Client): Promise<Tool[]> {
+    const toolsResults = await mcpClient.request(
       { method: 'tools/list' },
       ListToolsResultSchema,
     )
-    this.tools = toolsResults.tools.map(({ inputSchema, ...tool }) => ({
+    return toolsResults.tools.map(({ inputSchema, ...tool }) => ({
       ...tool,
       input_schema: inputSchema,
     }))
+  }
 
-    this.logger.log(
-      consoleStyles.toolsAvailable(
-        `======> MCP Tools available: ${this.tools
-          .map((t) => t.name)
-          .join(', ')}\n`,
-      ),
-    )
+  // Helper to get all tools from all servers
+  private getAllTools(): Tool[] {
+    return Array.from(this.servers.values()).flatMap((server) => server.tools)
+  }
+
+  // Helper to find the right server for a given tool
+  private getServerForTool(
+    toolName: string,
+  ): { mcpClient: Client } | undefined {
+    for (const server of this.servers.values()) {
+      if (server.tools.some((tool) => tool.name === toolName)) {
+        return { mcpClient: server.mcpClient }
+      }
+    }
+    return undefined
   }
 
   // CLI-specific formatting functions
@@ -156,15 +195,9 @@ export class MCPClient {
    * 2. We execute the tool and get results
    * 3. Results are added to message history
    * 4. A new Claude stream is created with updated history
-   * 5. Process repeats if Claude makes another tool call
+   * 5. Claude decides if it needs to call another tool or if it has all the info it needs to answer the User Query
+   * 6. Process repeats if Claude makes another tool call
    *
-   * To prevent infinite loops, we track the depth of recursive tool calls.
-   * When MAX_TOOL_DEPTH is reached we ask for a final response
-   * without allowing any more tool calls in case it just goes into a loop.
-   *
-   * The halt flag allows us to stop processing any further tool calls
-   * This is different from depth in that it's an immediate stop signal
-   * rather than a gradual limit
    */
   private async processStream(
     stream: Stream<Anthropic.Messages.RawMessageStreamEvent>,
@@ -197,51 +230,71 @@ export class MCPClient {
           }
           break
 
+        // a delta is a change to the message that could be a tool call or some text
         case 'message_delta':
+          // if there is any text, add it to the message history
           if (currentMessage) {
             this.messages.push({
               role: 'assistant',
               content: currentMessage,
             })
           }
-
+          // if the stop reason is a tool use, then we need to call the tool
           if (chunk.delta.stop_reason === 'tool_use') {
+            // tool args will be a json string, so we need to parse it
             const toolArgs = currentToolInputString
               ? JSON.parse(currentToolInputString)
               : {}
 
+            // log the tool call to the cli so we can see it
             this.logger.log(
               this.formatToolCall(currentToolName, toolArgs) + '\n',
             )
-            // console.log('======> Tool call: ' + currentToolName)
-            const toolResult = await this.mcpClient.request(
+
+            // get the server for the tool from the map
+            const server = this.getServerForTool(currentToolName)
+            if (!server) {
+              throw new Error(`No server found for tool: ${currentToolName}`)
+            }
+
+            // call the tool & await the result
+            const toolResult = await server.mcpClient.request(
               {
                 method: 'tools/call',
                 params: {
                   name: currentToolName,
-                  arguments: toolArgs,
+                  arguments: toolArgs, // the tool args is the json we got from the delta from claude
                 },
               },
               CallToolResultSchema,
             )
 
-            // assuming text is the only content type
+            // assuming text is the only content type - which isn't true e.g. we could get json back
             const toolResultContent = toolResult.content
               .map((c) => c.text)
               .join('')
 
+            // we identify the tool result with a special format so the llm knows it's a tool result
+            // it was getting confused and calling the tool again even after the tool has already been called
             const toolResultMessage = `Tool result returned for [${currentToolName}]: ${toolResultContent}`
+            this.logger.log(toolResultMessage + '\n')
 
+            // add the tool result to the message history
+            // this is important b/c many question will  have multiple tool calls
+            // the llm will need to see the history of the conversation to know what the next step is
             this.messages.push({
               role: 'assistant',
               content: toolResultMessage,
             })
 
+            // create a new stream with the updated message history
+            // if the llm has stopped then there will be no more tool calls
+            // & the stream will end b/c nextStream will not be called
             const nextStream = await this.anthropicClient.messages.create({
               messages: this.messages,
               model: 'claude-3-5-sonnet-20241022',
               max_tokens: 8192,
-              tools: this.tools,
+              tools: this.getAllTools(),
               stream: true,
             })
             await this.processStream(nextStream)
@@ -289,7 +342,7 @@ export class MCPClient {
         messages: this.messages,
         model: 'claude-3-5-sonnet-20241022',
         max_tokens: 8192,
-        tools: this.tools,
+        tools: this.getAllTools(),
         stream: true,
       })
       await this.processStream(stream)
