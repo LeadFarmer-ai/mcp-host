@@ -314,7 +314,7 @@ Now when you run `npm start`, the client will connect to your local MCP server a
 
 ## Key Components
 
-### MCPClient
+### MCP Client
 
 The main class that orchestrates all communication between Claude and tool servers. It handles:
 
@@ -322,6 +322,7 @@ The main class that orchestrates all communication between Claude and tool serve
 - Tool call execution
 - Stream management
 - Error handling
+- Manages tool responses
 
 ### Anthropic Client
 
@@ -330,15 +331,6 @@ Manages communication with Claude API:
 - Sends messages and receives responses
 - Handles streaming responses
 - Manages tool calling protocol
-
-### MCP Client
-
-Handles the Model Context Protocol (MCP):
-
-- Connects to tool servers
-- Lists available tools
-- Executes tool calls
-- Manages tool responses
 
 ### Transport
 
