@@ -122,6 +122,9 @@ In general:
 
 ## How do MCP Servers Work
 
+![image](https://github.com/user-attachments/assets/7b5814ae-36b0-4988-bdba-a575a040faaa)
+
+
 MCP Servers are like middleware that an LLM can understand how to use. They expose tools and they describe to the MCP Host what the tools do and how to call them. There is more but that is is the important part.
 
 MCP Servers provide 3 things:
